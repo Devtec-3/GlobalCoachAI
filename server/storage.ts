@@ -147,18 +147,21 @@ export class DatabaseStorage implements IStorage {
   ): Promise<CvProfileWithDetails | undefined> {
     const profile = await this.getCvProfile(userId);
     if (!profile) return undefined;
+
     const [eduList, expList, skillList, projectList] = await Promise.all([
       this.getEducation(profile.id),
       this.getWorkExperience(profile.id),
       this.getSkills(profile.id),
       this.getProjects(profile.id),
     ]);
+
+    // 🛡️ CRITICAL FIX: Ensure the results are always arrays [] so frontend .length logic doesn't fail
     return {
       ...profile,
-      education: eduList,
-      workExperience: expList,
-      skills: skillList,
-      projects: projectList,
+      education: eduList || [],
+      workExperience: expList || [],
+      skills: skillList || [],
+      projects: projectList || [],
     };
   }
 
@@ -179,75 +182,104 @@ export class DatabaseStorage implements IStorage {
     return profile || undefined;
   }
 
-  // Multi-entry replacement methods for Profile Building
+  // Multi-entry replacement methods
   async getEducation(cvProfileId: string): Promise<Education[]> {
-    return db
+    const results = await db
       .select()
       .from(education)
       .where(eq(education.cvProfileId, cvProfileId));
+    return results || [];
   }
+
   async replaceEducation(
     cvProfileId: string,
     entries: InsertEducation[]
   ): Promise<Education[]> {
+    const validEntries = entries.filter(
+      (e) => (e as any).institution && (e as any).institution.trim() !== ""
+    );
+
     await db.delete(education).where(eq(education.cvProfileId, cvProfileId));
-    if (entries.length === 0) return [];
+    if (validEntries.length === 0) return [];
+
     return await db
       .insert(education)
-      .values(entries.map((e) => ({ ...e, cvProfileId })))
+      .values(validEntries.map((e) => ({ ...e, cvProfileId })))
       .returning();
   }
 
   async getWorkExperience(cvProfileId: string): Promise<WorkExperience[]> {
-    return db
+    const results = await db
       .select()
       .from(workExperience)
       .where(eq(workExperience.cvProfileId, cvProfileId));
+    return results || [];
   }
+
   async replaceWorkExperience(
     cvProfileId: string,
     entries: InsertWorkExperience[]
   ): Promise<WorkExperience[]> {
+    const validEntries = entries.filter(
+      (e) => (e as any).company || (e as any).position || (e as any).jobTitle
+    );
+
     await db
       .delete(workExperience)
       .where(eq(workExperience.cvProfileId, cvProfileId));
-    if (entries.length === 0) return [];
+    if (validEntries.length === 0) return [];
+
     return await db
       .insert(workExperience)
-      .values(entries.map((e) => ({ ...e, cvProfileId })))
+      .values(validEntries.map((e) => ({ ...e, cvProfileId })))
       .returning();
   }
 
   async getSkills(cvProfileId: string): Promise<Skill[]> {
-    return db.select().from(skills).where(eq(skills.cvProfileId, cvProfileId));
+    const results = await db
+      .select()
+      .from(skills)
+      .where(eq(skills.cvProfileId, cvProfileId));
+    return results || [];
   }
+
   async replaceSkills(
     cvProfileId: string,
     skillNames: string[]
   ): Promise<Skill[]> {
+    const validNames = skillNames.filter((name) => name && name.trim() !== "");
+
     await db.delete(skills).where(eq(skills.cvProfileId, cvProfileId));
-    if (skillNames.length === 0) return [];
+    if (validNames.length === 0) return [];
+
     return await db
       .insert(skills)
-      .values(skillNames.map((name) => ({ cvProfileId, name })))
+      .values(validNames.map((name) => ({ cvProfileId, name })))
       .returning();
   }
 
   async getProjects(cvProfileId: string): Promise<Project[]> {
-    return db
+    const results = await db
       .select()
       .from(projects)
       .where(eq(projects.cvProfileId, cvProfileId));
+    return results || [];
   }
+
   async replaceProjects(
     cvProfileId: string,
     entries: InsertProject[]
   ): Promise<Project[]> {
+    const validEntries = entries.filter(
+      (e) => (e as any).name && (e as any).name.trim() !== ""
+    );
+
     await db.delete(projects).where(eq(projects.cvProfileId, cvProfileId));
-    if (entries.length === 0) return [];
+    if (validEntries.length === 0) return [];
+
     return await db
       .insert(projects)
-      .values(entries.map((e) => ({ ...e, cvProfileId })))
+      .values(validEntries.map((e) => ({ ...e, cvProfileId })))
       .returning();
   }
 
@@ -258,6 +290,7 @@ export class DatabaseStorage implements IStorage {
       .from(jobOpportunities)
       .orderBy(desc(jobOpportunities.postedDate));
   }
+
   async getJobOpportunity(id: string): Promise<JobOpportunity | undefined> {
     const [job] = await db
       .select()
@@ -265,6 +298,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(jobOpportunities.id, id));
     return job || undefined;
   }
+
   async createJobOpportunity(
     job: InsertJobOpportunity
   ): Promise<JobOpportunity> {
@@ -287,15 +321,17 @@ export class DatabaseStorage implements IStorage {
     }
     return result;
   }
+
   async createJobMatch(match: InsertJobMatch): Promise<JobMatch> {
     const [created] = await db.insert(jobMatches).values(match).returning();
     return created;
   }
+
   async deleteJobMatches(userId: string): Promise<void> {
     await db.delete(jobMatches).where(eq(jobMatches.userId, userId));
   }
 
-  // Applications (Fixed for Dashboard)
+  // Applications
   async getApplications(userId: string): Promise<Application[]> {
     return await db
       .select()
@@ -303,10 +339,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(applications.userId, userId))
       .orderBy(desc(applications.createdAt));
   }
+
   async createApplication(app: InsertApplication): Promise<Application> {
     const [created] = await db.insert(applications).values(app).returning();
     return created;
   }
+
   async updateApplication(
     id: string,
     data: Partial<InsertApplication>
@@ -318,6 +356,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updated || undefined;
   }
+
   async deleteApplication(id: string): Promise<void> {
     await db.delete(applications).where(eq(applications.id, id));
   }
@@ -330,10 +369,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(notifications.userId, userId))
       .orderBy(desc(notifications.createdAt));
   }
+
   async createNotification(notif: InsertNotification): Promise<Notification> {
     const [created] = await db.insert(notifications).values(notif).returning();
     return created;
   }
+
   async markNotificationRead(id: string): Promise<void> {
     await db
       .update(notifications)

@@ -26,9 +26,6 @@ export async function registerRoutes(
   };
 
   // ==========================================
-  // 🔐 AUTHENTICATION
-  // ==========================================
-// ==========================================
   // 🔐 AUTHENTICATION (With Email Fail-Safe)
   // ==========================================
   app.post("/api/auth/signup", async (req, res) => {
@@ -46,11 +43,13 @@ export async function registerRoutes(
         isAdmin: false,
       });
 
-      // 📧 Fail-safe: Only try to send email if user exists, but don't crash if it fails
+      // 📧 Fail-safe email notification
       if (user && user.email) {
         sendWelcomeEmail(user.email, user.displayName || "User")
           .then(() => console.log(`✅ Welcome email sent to ${user.email}`))
-          .catch((err) => console.log("⚠️ Email service not configured. Skipping email."));
+          .catch((err) =>
+            console.log("⚠️ Email service not configured. Skipping email.")
+          );
       }
 
       res.json({
@@ -63,6 +62,7 @@ export async function registerRoutes(
       res.status(500).json({ message: "Account creation failed" });
     }
   });
+
   app.post("/api/auth/signin", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -122,16 +122,8 @@ export async function registerRoutes(
       const aiResponse = await optimizeAchievement(prompt, "achievement");
       const jobs = safeParseAI(aiResponse);
 
-      const missingSkillsMap = new Map<string, number>();
       await Promise.all(
         jobs.map(async (job: any) => {
-          job.missingSkills?.forEach((skill: string) => {
-            const s = skill.toLowerCase();
-            if (!userSkills.includes(s)) {
-              missingSkillsMap.set(s, (missingSkillsMap.get(s) || 0) + 1);
-            }
-          });
-
           if (job.matchPercentage > 70 && job.insight) {
             await storage.createNotification({
               userId,
@@ -164,11 +156,15 @@ export async function registerRoutes(
   app.post("/api/cv-profile", async (req, res) => {
     const userId = req.session.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    console.log("Saving CV Profile basic data...");
     const profile = await storage.getCvProfile(userId);
     const data = { ...req.body, userId };
+
     const result = profile
       ? await storage.updateCvProfile(profile.id, data)
       : await storage.createCvProfile(data);
+
     res.json(result);
   });
 
@@ -178,6 +174,7 @@ export async function registerRoutes(
     const profile = await storage.getCvProfile(userId);
     if (!profile) return res.status(400).json({ error: "Profile required" });
 
+    console.log("Updating Education details...");
     const entries = Array.isArray(req.body) ? req.body : [req.body];
     const result = await storage.replaceEducation(profile.id, entries);
     res.json(result);
@@ -189,6 +186,7 @@ export async function registerRoutes(
     const profile = await storage.getCvProfile(userId);
     if (!profile) return res.status(400).json({ error: "Profile required" });
 
+    console.log("Updating Work Experience...");
     const entries = Array.isArray(req.body) ? req.body : [req.body];
     const result = await storage.replaceWorkExperience(profile.id, entries);
     res.json(result);
@@ -200,9 +198,10 @@ export async function registerRoutes(
     const profile = await storage.getCvProfile(userId);
     if (!profile) return res.status(400).json({ error: "Profile required" });
 
+    console.log("Updating Skills...");
     const skillNames = Array.isArray(req.body)
-      ? req.body.map((s: any) => s.name)
-      : [req.body.name];
+      ? req.body.map((s: any) => s.name || s)
+      : [req.body.name || req.body];
     const result = await storage.replaceSkills(profile.id, skillNames);
     res.json(result);
   });
@@ -213,6 +212,7 @@ export async function registerRoutes(
     const profile = await storage.getCvProfile(userId);
     if (!profile) return res.status(400).json({ error: "Profile required" });
 
+    console.log("Updating Projects...");
     const entries = Array.isArray(req.body) ? req.body : [req.body];
     const result = await storage.replaceProjects(profile.id, entries);
     res.json(result);
