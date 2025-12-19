@@ -3,35 +3,38 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Recreate __dirname for ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// This block handles BOTH modern ESM and older CommonJS bundled by Render
+let __dirname;
+try {
+  const __filename = fileURLToPath(import.meta.url);
+  __dirname = path.dirname(__filename);
+} catch (e) {
+  // Fallback if import.meta is not available (CommonJS/Bundled)
+  __dirname = process.cwd();
+}
 
 export function serveStatic(app: Express) {
-  // We go up one level (..) because on Render, the 'public' folder
-  // is usually sitting next to the 'dist' folder or inside it
-  const distPath = path.resolve(__dirname, "..", "public");
+  // On Render, the built frontend is usually in 'dist/public'
+  // We check multiple locations to be absolutely sure
+  const pathsToTry = [
+    path.resolve(__dirname, "..", "public"),
+    path.resolve(__dirname, "public"),
+    path.resolve(process.cwd(), "dist", "public"),
+    path.resolve(process.cwd(), "public"),
+  ];
 
-  if (!fs.existsSync(distPath)) {
-    // If the first check fails, try looking inside 'dist' (common for some build tools)
-    const fallbackPath = path.resolve(__dirname, "public");
-    if (fs.existsSync(fallbackPath)) {
-      app.use(express.static(fallbackPath));
-      app.use("*", (_req, res) => {
-        res.sendFile(path.resolve(fallbackPath, "index.html"));
-      });
-      return;
-    }
+  const distPath = pathsToTry.find((p) => fs.existsSync(p));
 
+  if (!distPath) {
     throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
+      `Could not find build directory. Checked: ${pathsToTry.join(", ")}`
     );
   }
 
   app.use(express.static(distPath));
 
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
+  // Fall through to index.html for React Router support
+  app.get("*", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
