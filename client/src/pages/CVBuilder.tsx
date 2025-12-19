@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -36,13 +36,7 @@ import {
   Loader2,
   Download,
 } from "lucide-react";
-import type {
-  CvProfileWithDetails,
-  Education,
-  WorkExperience,
-  Skill,
-  Project,
-} from "@shared/schema";
+import type { CvProfileWithDetails } from "@shared/schema";
 
 const steps = [
   { id: 1, name: "Personal Info", icon: User },
@@ -92,22 +86,28 @@ export default function CVBuilder() {
       location: cvProfile?.location || "",
       linkedinUrl: cvProfile?.linkedinUrl || "",
       portfolioUrl: cvProfile?.portfolioUrl || "",
-      summary: cvProfile?.summary || "",
+      summary: cvProfile?.summary || (cvProfile as any)?.bio || "",
     },
   });
 
-  // PDF Download Function
+  // --- REAL-TIME STRENGTH CALCULATION ---
+  const completionPercentage = useMemo(() => {
+    if (!cvProfile) return 0;
+    let score = 0;
+    const p = cvProfile as any;
+
+    if ((p.summary || p.bio)?.length > 5) score += 30;
+    if (p.location || p.phone) score += 10;
+    if (p.skills && p.skills.length >= 3) score += 20;
+    if (p.education && p.education.length > 0) score += 20;
+    if (p.workExperience && p.workExperience.length > 0) score += 20;
+
+    return Math.min(100, score);
+  }, [cvProfile]);
+
   const handleDownloadPDF = async () => {
     const element = document.getElementById("cv-preview-content");
-    if (!element) {
-      toast({
-        title: "Error",
-        description: "Preview container not found",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    if (!element) return;
     setIsExporting(true);
     try {
       const canvas = await html2canvas(element, { scale: 3, useCORS: true });
@@ -115,21 +115,11 @@ export default function CVBuilder() {
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${cvProfile?.firstName || "My"}_AI_CV.pdf`);
-
-      toast({
-        title: "Success!",
-        description: "Your ATS-optimized CV has been downloaded.",
-      });
+      toast({ title: "Success!", description: "CV Downloaded." });
     } catch (err) {
-      console.error(err);
-      toast({
-        title: "Export Failed",
-        description: "Could not generate PDF.",
-        variant: "destructive",
-      });
+      toast({ title: "Export Failed", variant: "destructive" });
     } finally {
       setIsExporting(false);
     }
@@ -157,7 +147,7 @@ export default function CVBuilder() {
         form.setValue("summary", data.optimizedText);
         toast({
           title: "Optimized!",
-          description: "AI has enhanced your summary.",
+          description: "AI enhanced your summary.",
         });
       }
     },
@@ -165,7 +155,6 @@ export default function CVBuilder() {
   });
 
   if (isLoading) return <PageLoader />;
-  const completionPercentage = cvProfile?.completionPercentage || 0;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -173,7 +162,7 @@ export default function CVBuilder() {
         <div>
           <h1 className="text-3xl font-bold">CV Builder</h1>
           <p className="text-muted-foreground font-medium">
-            Build your AI-optimized professional profile
+            Build your AI-optimized profile
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -182,7 +171,7 @@ export default function CVBuilder() {
               onClick={handleDownloadPDF}
               disabled={isExporting}
               variant="outline"
-              className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
+              className="bg-primary/5"
             >
               {isExporting ? (
                 <Loader2 className="animate-spin h-4 w-4 mr-2" />
@@ -195,7 +184,7 @@ export default function CVBuilder() {
           <div className="flex items-center gap-2 border rounded-full px-4 py-2 bg-muted/30">
             <Label
               htmlFor="preview-toggle"
-              className="text-xs font-bold uppercase tracking-wider"
+              className="text-xs font-bold uppercase"
             >
               Preview Mode
             </Label>
@@ -275,7 +264,7 @@ export default function CVBuilder() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="text-primary text-xs font-bold uppercase"
+                              className="text-primary text-xs font-bold"
                               onClick={() => {
                                 setOptimizingField("summary");
                                 optimizeMutation.mutate(field.value || "");
@@ -337,23 +326,20 @@ export default function CVBuilder() {
   );
 }
 
-// Sub-components: Education, Experience, Skills, Projects (Keep your existing logic)
+// SUB-COMPONENTS
 function EducationStep({ education, onNext, onBack }: any) {
   const [entries, setEntries] = useState(
     education.length > 0 ? education : [{}]
   );
   const queryClient = useQueryClient();
-  const { toast } = useToast();
-
   const save = useMutation({
     mutationFn: (data: any[]) =>
-      apiRequest("POST", "/api/cv-profile/education", { education: data }),
+      apiRequest("POST", "/api/cv-profile/education", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cv-profile/full"] });
       onNext();
     },
   });
-
   return (
     <div className="space-y-6">
       {entries.map((entry: any, i: number) => (
@@ -409,33 +395,31 @@ function ExperienceStep({ experience, onNext, onBack }: any) {
     experience.length > 0 ? experience : [{}]
   );
   const queryClient = useQueryClient();
-
   const save = useMutation({
     mutationFn: (data: any[]) =>
-      apiRequest("POST", "/api/cv-profile/experience", { experience: data }),
+      apiRequest("POST", "/api/cv-profile/experience", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cv-profile/full"] });
       onNext();
     },
   });
-
   return (
     <div className="space-y-6">
       {entries.map((entry: any, i: number) => (
         <div key={i} className="border p-4 rounded-lg space-y-4">
           <Input
             placeholder="Company"
-            defaultValue={entry.company}
+            defaultValue={(entry as any).company}
             onChange={(e) => {
-              entries[i].company = e.target.value;
+              (entries[i] as any).company = e.target.value;
               setEntries([...entries]);
             }}
           />
           <Input
             placeholder="Position"
-            defaultValue={entry.position}
+            defaultValue={(entry as any).position}
             onChange={(e) => {
-              entries[i].position = e.target.value;
+              (entries[i] as any).position = e.target.value;
               setEntries([...entries]);
             }}
           />
@@ -475,16 +459,14 @@ function SkillsStep({ skills, onNext, onBack }: any) {
   );
   const [val, setVal] = useState("");
   const queryClient = useQueryClient();
-
   const save = useMutation({
     mutationFn: (s: string[]) =>
-      apiRequest("POST", "/api/cv-profile/skills", { skills: s }),
+      apiRequest("POST", "/api/cv-profile/skills", s),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cv-profile/full"] });
       onNext();
     },
   });
-
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -529,16 +511,14 @@ function ProjectsStep({ projects, onBack }: any) {
   const [entries, setEntries] = useState(projects.length > 0 ? projects : [{}]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
   const save = useMutation({
     mutationFn: (data: any[]) =>
-      apiRequest("POST", "/api/cv-profile/projects", { projects: data }),
+      apiRequest("POST", "/api/cv-profile/projects", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cv-profile/full"] });
       toast({ title: "CV Complete!" });
     },
   });
-
   return (
     <div className="space-y-6">
       {entries.map((entry: any, i: number) => (
@@ -563,102 +543,49 @@ function ProjectsStep({ projects, onBack }: any) {
   );
 }
 
-// MODIFIED CV PREVIEW FOR PDF EXPORT
-function CVPreview({ profile }: { profile: CvProfileWithDetails | undefined }) {
+function CVPreview({ profile }: { profile: any }) {
   if (!profile) return null;
-
   return (
     <div className="lg:sticky lg:top-24 h-fit">
       <div
-        id="cv-preview-content" // TARGET ID FOR EXPORT
-        className="rounded-xl border bg-white text-slate-900 shadow-2xl transition-all duration-500 overflow-hidden"
+        id="cv-preview-content"
+        className="rounded-xl border bg-white text-slate-900 shadow-2xl p-8 overflow-hidden"
         style={{
           width: "210mm",
           minHeight: "297mm",
-          padding: "20mm",
           transform: "scale(0.4)",
           transformOrigin: "top left",
         }}
       >
         <div className="h-3 bg-primary mb-8" />
-        <div className="border-b-2 border-slate-200 pb-6 mb-8">
-          <h2 className="text-4xl font-black text-primary uppercase">
-            {profile.firstName} {profile.lastName}
-          </h2>
-          <div className="mt-4 flex gap-4 text-sm font-bold text-slate-500 uppercase tracking-widest">
-            {profile.email && <span>{profile.email}</span>}
-            {profile.phone && <span>• {profile.phone}</span>}
-            {profile.location && <span>• {profile.location}</span>}
-          </div>
+        <h2 className="text-4xl font-black text-primary uppercase">
+          {profile.firstName} {profile.lastName}
+        </h2>
+        <div className="mt-4 flex gap-4 text-sm font-bold text-slate-500 uppercase tracking-widest border-b-2 pb-6 mb-8">
+          {profile.email && <span>{profile.email}</span>}
+          {profile.phone && <span>• {profile.phone}</span>}
+          {profile.location && <span>• {profile.location}</span>}
         </div>
-
-        {profile.summary && (
+        {(profile.summary || profile.bio) && (
           <section className="mb-8">
             <h4 className="text-xs font-black text-primary uppercase border-l-4 border-primary pl-3 mb-4 tracking-[0.2em]">
               Profile Summary
             </h4>
-            <p className="text-sm leading-relaxed text-slate-600 font-medium italic">
-              "{profile.summary}"
+            <p className="text-sm italic text-slate-600">
+              "{profile.summary || profile.bio}"
             </p>
           </section>
         )}
-
-        {profile.workExperience && profile.workExperience.length > 0 && (
+        {profile.skills?.length > 0 && (
           <section className="mb-8">
-            <h4 className="text-xs font-black text-primary uppercase border-l-4 border-primary pl-3 mb-4 tracking-[0.2em]">
-              Experience
-            </h4>
-            <div className="space-y-6">
-              {profile.workExperience.map((exp, i) => (
-                <div key={i}>
-                  <div className="flex justify-between font-bold text-slate-800">
-                    <span className="text-lg">{exp.position}</span>
-                    <span className="text-xs text-slate-400">
-                      {exp.startDate} - {exp.endDate || "Present"}
-                    </span>
-                  </div>
-                  <p className="text-sm font-black text-primary/80 uppercase mb-2">
-                    {exp.company}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {profile.education && profile.education.length > 0 && (
-          <section className="mb-8">
-            <h4 className="text-xs font-black text-primary uppercase border-l-4 border-primary pl-3 mb-4 tracking-[0.2em]">
-              Education
-            </h4>
-            <div className="space-y-4">
-              {profile.education.map((edu, i) => (
-                <div key={i} className="flex justify-between font-bold">
-                  <div>
-                    <span className="text-slate-800 block">{edu.degree}</span>
-                    <span className="text-xs text-slate-400 uppercase tracking-tighter">
-                      {edu.institution}
-                    </span>
-                  </div>
-                  <span className="text-xs text-slate-400">
-                    {edu.startDate} - {edu.endDate}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {profile.skills && profile.skills.length > 0 && (
-          <section>
             <h4 className="text-xs font-black text-primary uppercase border-l-4 border-primary pl-3 mb-4 tracking-[0.2em]">
               Technical Skills
             </h4>
             <div className="flex flex-wrap gap-2">
-              {profile.skills.map((s, i) => (
+              {profile.skills.map((s: any, i: number) => (
                 <span
                   key={i}
-                  className="border-2 border-slate-100 px-3 py-1 rounded text-[10px] font-black uppercase text-slate-600"
+                  className="border-2 px-3 py-1 rounded text-[10px] font-black uppercase text-slate-600"
                 >
                   {s.name}
                 </span>

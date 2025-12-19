@@ -68,7 +68,7 @@ export interface IStorage {
 
   // Skills
   getSkills(cvProfileId: string): Promise<Skill[]>;
-  replaceSkills(cvProfileId: string, skillNames: string[]): Promise<Skill[]>;
+  replaceSkills(cvProfileId: string, skillNames: any[]): Promise<Skill[]>;
 
   // Projects
   getProjects(cvProfileId: string): Promise<Project[]>;
@@ -155,7 +155,6 @@ export class DatabaseStorage implements IStorage {
       this.getProjects(profile.id),
     ]);
 
-    // 🛡️ CRITICAL FIX: Ensure the results are always arrays [] so frontend .length logic doesn't fail
     return {
       ...profile,
       education: eduList || [],
@@ -245,9 +244,16 @@ export class DatabaseStorage implements IStorage {
 
   async replaceSkills(
     cvProfileId: string,
-    skillNames: string[]
+    skillNames: any[]
   ): Promise<Skill[]> {
-    const validNames = skillNames.filter((name) => name && name.trim() !== "");
+    // 🛡️ CRITICAL FIX: Extract strings from objects if necessary to prevent .trim() crashes
+    const validNames = skillNames
+      .map((s) => {
+        if (typeof s === "string") return s;
+        if (typeof s === "object" && s !== null && "name" in s) return (s as any).name;
+        return null;
+      })
+      .filter((name): name is string => typeof name === "string" && name.trim() !== "");
 
     await db.delete(skills).where(eq(skills.cvProfileId, cvProfileId));
     if (validNames.length === 0) return [];
