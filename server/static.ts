@@ -3,19 +3,22 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// This block handles BOTH modern ESM and older CommonJS bundled by Render
-let __dirname;
+// Bulletproof __dirname for ESM and CJS
+let __dirname: string;
 try {
-  const __filename = fileURLToPath(import.meta.url);
-  __dirname = path.dirname(__filename);
+  // We check if import.meta exists before calling fileURLToPath
+  // @ts-ignore
+  if (import.meta && import.meta.url) {
+    const __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  } else {
+    __dirname = process.cwd();
+  }
 } catch (e) {
-  // Fallback if import.meta is not available (CommonJS/Bundled)
   __dirname = process.cwd();
 }
 
 export function serveStatic(app: Express) {
-  // On Render, the built frontend is usually in 'dist/public'
-  // We check multiple locations to be absolutely sure
   const pathsToTry = [
     path.resolve(__dirname, "..", "public"),
     path.resolve(__dirname, "public"),
@@ -33,8 +36,8 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  // Fall through to index.html for React Router support
   app.get("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    // We use distPath! (with exclamation) to tell TS it's definitely defined
+    res.sendFile(path.resolve(distPath!, "index.html"));
   });
 }
