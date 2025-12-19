@@ -5,25 +5,26 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { pool } from "./db";
-import "dotenv/config"; // Standard load
+import "dotenv/config";
 import dotenv from "dotenv";
 import path from "path";
 
-// 🛡️ FORCE RE-LOAD & HEALTH CHECK
-// This ensures that even on Windows/Mac, the .env is found in the project root
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+
+const app = express();
+
+// --- 🛡️ RENDER PROXY TRUST ---
+// This tells Express to trust the headers Render's proxy (load balancer) sends.
+// Without this, 'secure: true' cookies will be rejected.
+app.set("trust proxy", 1);
 
 console.log("-----------------------------------------");
 console.log("🚀 BOOTSTRAP: Environment Health Check");
 console.log("PORT Configured:", process.env.PORT || "5000 (Default)");
 console.log("Database Connected:", !!process.env.DATABASE_URL);
 console.log("Gemini AI Key Active:", !!process.env.GEMINI_API_KEY);
-if (!process.env.GEMINI_API_KEY) {
-  console.log("⚠️ WARNING: GEMINI_API_KEY not found in .env file");
-}
 console.log("-----------------------------------------");
 
-const app = express();
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -66,11 +67,14 @@ app.use(
     secret: sessionSecret || "dev-only-secret-not-for-production",
     resave: false,
     saveUninitialized: false,
+    name: "globalcoach_session", // Custom name to avoid collision
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000,
       httpOnly: true,
+      // On Render, this must be true for secure logins
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      // 'lax' is best for standard same-domain hosting like Render
+      sameSite: process.env.NODE_ENV === "production" ? "lax" : "lax",
     },
   })
 );
@@ -116,7 +120,6 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
     res.status(status).json({ message });
-    // Removed 'throw err' to prevent server crashing on non-critical errors
   });
 
   if (process.env.NODE_ENV === "production") {
@@ -126,8 +129,8 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
+  // Ensure we use the PORT provided by Render
   const PORT = Number(process.env.PORT) || 5000;
-  // Listen on 0.0.0.0 to ensure local network access works
   httpServer.listen(PORT, "0.0.0.0", () => {
     log(`🚀 Server is active at http://0.0.0.0:${PORT}`);
   });
