@@ -28,6 +28,9 @@ export async function registerRoutes(
   // ==========================================
   // 🔐 AUTHENTICATION
   // ==========================================
+// ==========================================
+  // 🔐 AUTHENTICATION (With Email Fail-Safe)
+  // ==========================================
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const { email, password, displayName } = req.body;
@@ -43,10 +46,11 @@ export async function registerRoutes(
         isAdmin: false,
       });
 
-      if (user.email) {
-        sendWelcomeEmail(user.email, user.displayName || "User").catch(
-          console.error
-        );
+      // 📧 Fail-safe: Only try to send email if user exists, but don't crash if it fails
+      if (user && user.email) {
+        sendWelcomeEmail(user.email, user.displayName || "User")
+          .then(() => console.log(`✅ Welcome email sent to ${user.email}`))
+          .catch((err) => console.log("⚠️ Email service not configured. Skipping email."));
       }
 
       res.json({
@@ -55,10 +59,10 @@ export async function registerRoutes(
         displayName: user.displayName,
       });
     } catch (error) {
+      console.error("Signup Error:", error);
       res.status(500).json({ message: "Account creation failed" });
     }
   });
-
   app.post("/api/auth/signin", async (req, res) => {
     try {
       const { email, password } = req.body;
