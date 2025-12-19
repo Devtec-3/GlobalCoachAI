@@ -1,11 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import {
-  optimizeAchievement,
-  generateCoverLetter,
-  analyzeJobMatch,
-} from "./gemini";
+import { optimizeAchievement } from "./gemini";
 import { hashPassword, verifyPassword } from "./auth";
 import { sendWelcomeEmail, sendLoginNotification } from "./email";
 
@@ -105,7 +101,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const query = req.query.q || "Remote Opportunities";
+      const query = (req.query.q as string) || "Remote Opportunities";
       const profile = await storage.getCvProfileWithDetails(userId);
 
       if (!profile)
@@ -115,27 +111,16 @@ export async function registerRoutes(
         profile.skills?.map((s: any) => s.name.toLowerCase()) || [];
       const skillsCsv = userSkills.join(", ") || "General";
 
-      // 🧠 ENHANCED PROMPT: Requests specific mentoring insights based on the user's CV
       const prompt = `Act as a Global AI Career Mentor. Find 5 real-world roles for: "${query}". 
       User's Current Skills: ${skillsCsv}.
-      
-      For each job, provide:
-      1. title, company, matchPercentage, location, reason.
-      2. missingSkills: A list of requirements the user doesn't have.
-      3. insight: A single professional sentence explaining WHY mastering one of the missing skills is essential for this specific career path (e.g., "Mastering Kubernetes will bridge the gap between your DevOps interest and high-scale backend engineering").
-
       Return ONLY a JSON array: [{"title": "...", "company": "...", "matchPercentage": 95, "location": "...", "reason": "...", "missingSkills": [], "insight": "..."}]`;
 
       const aiResponse = await optimizeAchievement(prompt, "achievement");
       const jobs = safeParseAI(aiResponse);
 
-      // --- 🤖 LIVE KNOWLEDGE ENGINE ---
       const missingSkillsMap = new Map<string, number>();
-
-      // Process jobs and build skill frequency + individual notifications
       await Promise.all(
         jobs.map(async (job: any) => {
-          // 1. Collect skills for frequency analysis
           job.missingSkills?.forEach((skill: string) => {
             const s = skill.toLowerCase();
             if (!userSkills.includes(s)) {
@@ -143,7 +128,6 @@ export async function registerRoutes(
             }
           });
 
-          // 2. Create high-value individual Mentorship Notifications
           if (job.matchPercentage > 70 && job.insight) {
             await storage.createNotification({
               userId,
@@ -156,81 +140,15 @@ export async function registerRoutes(
         })
       );
 
-      // 3. Create aggregate "Growth Opportunity" notifications for high-demand skills
-      const skillGapEntries = Array.from(missingSkillsMap.entries());
-      await Promise.all(
-        skillGapEntries.map(async ([skill, count]) => {
-          if (count >= 2) {
-            await storage.createNotification({
-              userId,
-              type: "skill_gap",
-              title: "Market Demand Alert",
-              message: `70% of current results for "${query}" require ${skill.toUpperCase()}. We recommend updating your CV with this skill to improve global visibility.`,
-              read: false,
-            });
-          }
-        })
-      );
-
       res.json(jobs);
     } catch (error) {
-      console.error("AI Search/Gap Error:", error);
+      console.error("AI Search Error:", error);
       res.status(500).json({ error: "Search failed" });
     }
   });
 
   // ==========================================
-  // 📊 TRACKER & DASHBOARD
-  // ==========================================
-  app.post("/api/applications", async (req, res) => {
-    const userId = req.session.userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-    try {
-      const { jobId, title, company, location } = req.body;
-      const result = await storage.createApplication({
-        userId,
-        jobId: jobId?.toString() || Math.random().toString(),
-        title,
-        company,
-        location,
-        status: "to_apply",
-      });
-
-      const application = Array.isArray(result) ? result[0] : result;
-      res.json(application);
-    } catch (error) {
-      console.error("Tracker save error:", error);
-      res.status(500).json({ error: "Failed to save application" });
-    }
-  });
-
-  app.get("/api/applications", async (req, res) => {
-    const userId = req.session.userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    const apps = await storage.getApplications(userId);
-    res.json(apps);
-  });
-
-  // ==========================================
-  // 🔔 NOTIFICATIONS
-  // ==========================================
-  app.get("/api/notifications", async (req, res) => {
-    const userId = req.session.userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    const notifs = await storage.getNotifications(userId);
-    res.json(notifs);
-  });
-
-  app.post("/api/notifications/:id/read", async (req, res) => {
-    const userId = req.session.userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    await storage.markNotificationRead(req.params.id);
-    res.json({ success: true });
-  });
-
-  // ==========================================
-  // 📝 CV PROFILE
+  // 📝 CV PROFILE & SUB-ENTITIES (ALIGNED WITH STORAGE.TS)
   // ==========================================
   app.get("/api/cv-profile/full", async (req, res) => {
     const userId = req.session.userId;
@@ -248,6 +166,95 @@ export async function registerRoutes(
       ? await storage.updateCvProfile(profile.id, data)
       : await storage.createCvProfile(data);
     res.json(result);
+  });
+
+  app.post("/api/cv-profile/education", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const profile = await storage.getCvProfile(userId);
+    if (!profile) return res.status(400).json({ error: "Profile required" });
+
+    const entries = Array.isArray(req.body) ? req.body : [req.body];
+    const result = await storage.replaceEducation(profile.id, entries);
+    res.json(result);
+  });
+
+  app.post("/api/cv-profile/experience", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const profile = await storage.getCvProfile(userId);
+    if (!profile) return res.status(400).json({ error: "Profile required" });
+
+    const entries = Array.isArray(req.body) ? req.body : [req.body];
+    const result = await storage.replaceWorkExperience(profile.id, entries);
+    res.json(result);
+  });
+
+  app.post("/api/cv-profile/skills", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const profile = await storage.getCvProfile(userId);
+    if (!profile) return res.status(400).json({ error: "Profile required" });
+
+    const skillNames = Array.isArray(req.body)
+      ? req.body.map((s: any) => s.name)
+      : [req.body.name];
+    const result = await storage.replaceSkills(profile.id, skillNames);
+    res.json(result);
+  });
+
+  app.post("/api/cv-profile/projects", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const profile = await storage.getCvProfile(userId);
+    if (!profile) return res.status(400).json({ error: "Profile required" });
+
+    const entries = Array.isArray(req.body) ? req.body : [req.body];
+    const result = await storage.replaceProjects(profile.id, entries);
+    res.json(result);
+  });
+
+  // ==========================================
+  // 📊 TRACKER & NOTIFICATIONS
+  // ==========================================
+  app.post("/api/applications", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const { jobId, title, company, location } = req.body;
+      const result = await storage.createApplication({
+        userId,
+        jobId: jobId?.toString() || Math.random().toString(),
+        title,
+        company,
+        location,
+        status: "to_apply",
+      });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save application" });
+    }
+  });
+
+  app.get("/api/applications", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const apps = await storage.getApplications(userId);
+    res.json(apps);
+  });
+
+  app.get("/api/notifications", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const notifs = await storage.getNotifications(userId);
+    res.json(notifs);
+  });
+
+  app.post("/api/notifications/:id/read", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    await storage.markNotificationRead(req.params.id);
+    res.json({ success: true });
   });
 
   return httpServer;
