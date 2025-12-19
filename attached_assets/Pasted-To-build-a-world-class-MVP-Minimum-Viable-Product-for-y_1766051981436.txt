@@ -1,0 +1,121 @@
+To build a world-class MVP (Minimum Viable Product) for your SIWES defense, you need a structured **Technical Requirement Document (TRD)**. This is what a professional Lead Developer would hand to a team to ensure the project is "unique and amazing."
+
+---
+
+## 🏛️ Project Architecture: "GlobalCareer AI"
+
+### 1. Frontend: The Angular Engine
+
+* **Version:** Angular 18/19 (Standalone Components).
+* **State Management:** Angular Signals (for real-time notification updates).
+* **Form Handling:** `ReactiveFormsModule` (Essential for the complex multi-step CV form).
+* **UI Library:** **Tailwind CSS** + **DaisyUI** (for a sleek, modern look) or **Angular Material**.
+
+### 2. Backend: The Logic Hub
+
+* **Framework:** **Node.js with Express** (Fast and scalable).
+* **AI Integration:** **Google Gemini API** (Free tier available, excellent at text processing).
+* **Database:** **MongoDB** (To store flexible user profiles and CV data).
+* **Authentication:** **Firebase Auth** (Handles Sign-up, Email Verification, and "Forgot Password" out of the box).
+
+---
+
+## 🛠️ Phase-by-Phase MVP Implementation
+
+### Phase 1: Identity & Security (The Foundation)
+
+* **Feature:** Secure Authentication.
+* **Developer Task:**
+* Integrate Firebase SDK into Angular.
+* Create `login`, `signup`, and `forgot-password` components.
+* **The "Special" Touch:** On successful signup, use a Firebase Cloud Function to send a "Welcome to the Future of your Career" HTML email template.
+
+
+
+### Phase 2: The "Global-Standard" CV Builder
+
+* **Feature:** Smart Data Collection.
+* **Developer Task:** * Build a **Stepper Form** (Personal Info → Education → Experience → Skills).
+* **AI Optimization Button:** Add a button next to the "Experience" field. When clicked, it sends the user's raw text to the backend.
+* **Prompt Engineering:** The backend sends this to Gemini:
+> *"Rewrite the following job duty into a high-impact, ATS-friendly achievement using action verbs and metrics: [User Text]."*
+
+
+* **PDF Generation:** Use `jspdf` to export a clean, **single-column** layout (Global standard for ATS).
+
+
+
+### Phase 3: AI Opportunity Matcher & Notifications
+
+* **Feature:** Personalized Job Discovery.
+* **Developer Task:**
+* Create a "Jobs" tab.
+* **The Match Logic:** The AI compares the `User.skills` array against a database of scraped or mock opportunities.
+* **Notification System:** Use **Socket.io** or Firebase Cloud Messaging to send a popup: *"Hey [Name], a new Internship at Google matches 85% of your profile!"*
+
+
+
+### Phase 4: Application Tracker (The Record of Achievement)
+
+* **Feature:** The "Success Log."
+* **Developer Task:**
+* Create a Kanban board (To-Apply | Applied | Interviewing | Hired).
+* **AI Insight:** When a user moves a job to "Applied," the AI asks: *"Would you like me to generate a custom Cover Letter for this specific company?"*
+* This tracks the "Achievement Record" you mentioned for your defense.
+
+
+
+---
+
+## 💻 Core Code Snippets (For your Developer)
+
+### The AI Service (Angular)
+
+```typescript
+// ai-optimizer.service.ts
+import { HttpClient } from '@angular/common/http';
+
+export class AiService {
+  constructor(private http: HttpClient) {}
+
+  optimizeAchievement(text: string) {
+    return this.http.post('/api/ai/optimize', { content: text });
+  }
+}
+
+```
+
+### The Backend AI Logic (Node.js)
+
+```javascript
+// server.js (using Gemini API)
+app.post('/api/ai/optimize', async (req, res) => {
+  const { content } = req.body;
+  const prompt = `Act as a world-class career coach. Rewrite this for a CV: ${content}`;
+  const result = await geminiModel.generateContent(prompt);
+  res.json({ optimizedText: result.response.text() });
+});
+
+```
+
+---
+
+## 🏆 Defense Strategy: Why this is "Special"
+
+When presenting to your SIWES supervisors, emphasize these **Three Unique Selling Points (USPs)**:
+
+1. **ATS-First Design:** "Most apps make pretty CVs; mine makes **hirable** CVs that pass through robot filters."
+2. **Proactive Assistance:** "The app doesn't wait for the user; it notifies them when a global opportunity matches their specific skill set."
+3. **The Feedback Loop:** "By tracking successful applications, the AI learns which version of the user's CV performs best in the real world."
+
+---
+
+## 👨‍💻 Global Developer Advice
+
+To be a "Best in the World" developer for this project:
+
+1. **Keep it Clean:** Use a modular folder structure in Angular (`/core`, `/shared`, `/features`).
+2. **Speed Matters:** Use **Lazy Loading** so the app loads instantly.
+3. **User Experience (UX):** Use "Loading Shimmers" while the AI is generating text so the user knows the "brain" is working.
+
+**Would you like me to generate a sample "Prompt Engineering" script that the AI will use to ensure the CV meets global standards?**
